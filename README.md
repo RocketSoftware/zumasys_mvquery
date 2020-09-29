@@ -83,6 +83,75 @@ to assist with data type conversions.
 1. DICT<7>[1,2]="MD" - Data will be a number versus a string.  All $, in the data will be removed.
 2. Everything else is displayed as a string and the data is left as is
 
+## DEMO.FILE example
+
+```
+MAKE-DEMO-FILE
+<name the file DEMO.FILE>
+
+ED DICT DEMO.FILE SCHEMA.JSON
+{
+    "11": {
+       "group": "products",
+       "type": "collection"
+    },
+    "12": {
+       "group": "products",
+       "type": "collection"
+    },
+    "13": {
+       "group": "products",
+       "type": "collection"
+    },
+    "14": {
+       "group": "products",
+       "type": "collection"
+    }
+ }
+ FI
+ MVQUERY.RTNE [LIST DEMO.FILE "0001" LASTNAME OS HARDWARE
+
+ Output
+
+ ```
+ jsh JBASEDEV ~ -->MVQUERY.RTNE [LIST DEMO.FILE "0001" LASTNAME OS HARDWARE
+Content-type: application/json
+Cache-Control: no-cache
+
+{
+        "result":[
+                {
+                        "DEMO_FILE":"0001",
+                        "LASTNAME":"MURPHY",
+                        "products":[
+                                {
+                                        "OS":"TRU64",
+                                        "HARDWARE":"ASUS"
+                                },
+                                {
+                                        "OS":"LINUX RH7",
+                                        "HARDWARE":"COMPAQ"
+                                },
+                                {
+                                        "OS":"LINUX RH7",
+                                        "HARDWARE":"DIGITAL"
+                                },
+                                {
+                                        "OS":"CENTOS7",
+                                        "HARDWARE":"ZSERIES"
+                                }
+                        ]
+                }
+        ],
+        "runtime":8,
+        "numitems":1,
+        "resultmsg":"",
+        "ranquery":"LIST DEMO.FILE \"0001\" LASTNAME OS HARDWARE"
+}
+jsh JBASEDEV ~ -->
+```
+
+
 ## Todo
 
 * Create additional data type schema entries to convert data
