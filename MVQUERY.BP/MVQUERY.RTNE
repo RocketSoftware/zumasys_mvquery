@@ -1,0 +1,57 @@
+      $option jabba
+
+      CALL WSETCONTENTTYPE("application/json")
+
+      robj = new object()
+
+      result.code=200
+      result.msg=""
+
+      CALL WGETBODY(BODY)
+
+      bobj=BODY->$fromjson(1)
+
+      CMND=bobj->query
+
+      IF CMND="" THEN
+         CALL WGETVAR(CMND,"query")
+      END
+
+      TCMND=SENTENCE()
+      PCMND=FIELD(TCMND,"[",2,99999)
+      IF PCMND # "" THEN CMND=PCMND
+
+      IF CMND="" THEN
+         result.code=400
+         result.msg="No query sent"
+         GOTO end.of.run
+      END
+
+      REPORT.RESULT = NEW ARRAY()
+
+      START.TIME=SYSTEM(12)
+
+      OPTIONS = NEW OBJECT()
+
+      CALL MVJQLTOJSON.RTNE(CMND,REPORT.RESULT,OPTIONS,REPORT.ERRORS)
+
+      result.msg = REPORT.ERRORS<2>
+      IF REPORT.ERRORS<1> THEN result.code=400
+
+      END.TIME=SYSTEM(12)
+
+      robj->result = REPORT.RESULT
+
+      robj->runtime = (END.TIME-START.TIME)
+
+      num.items = REPORT.RESULT->$size()
+
+      robj->numitems = num.items
+
+end.of.run: *
+
+      CALL WSETSTATUS(result.code)
+      robj->resultmsg=result.msg
+      robj->ranquery=CMND
+
+      CALL WSEND(robj->$tojson(1))

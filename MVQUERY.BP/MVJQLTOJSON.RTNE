@@ -1,0 +1,237 @@
+    SUBROUTINE MVJQLTOJSON.RTNE(CMND,ROBJECT,OPTIONS,RETURN.ERROR)
+*
+        $option jabba
+*
+        INCLUDE jQLProperties.h
+*
+        DIM DCOLUMNS(100)
+*
+        Result = 0
+        Options = ""
+        SelectList = ""
+        RETURN.ERROR = "0"
+*
+* OPTIONS PASSED IN WILL BE A OBJECT
+*
+        IF options->pretty = "1" or oconv(options->pretty,"MCU") = "Y" then pretty=1 else pretty=0
+*
+* if we have a get list, lets build the list
+*
+        IF SYSTEM(11) THEN
+            SelectList=''
+            LOOP
+                READNEXT TEMP.ID ELSE EXIT
+                SelectList<-1>=TEMP.ID
+            REPEAT
+            Options=1
+        END ELSE
+            SelectList=''
+        END
+*
+* we may be passing in a fake command, this will
+* try and determine the real name
+*
+* SORT-JSON AND LIST-JSON will pull the command off the -
+*
+        FIRST.CMND=FIELD(CMND,' ',1)
+        IF INDEX(FIRST.CMND,'-',1) THEN FIRST.CMND=FIELD(FIRST.CMND,'-',1)
+        Request=FIRST.CMND:' ':FIELD(CMND,' ',2,9999)
+*
+* Run the JQLCOMPILE command
+*
+        jql.Options=""
+        ResultCode = JQLCOMPILE(Statement, Request, jql.Options, ErrorString)
+        IF ResultCode < 0 THEN
+            RETURN.ERROR=1
+            RETURN.ERROR<2>=ErrorString
+            RETURN
+        END
+        FILENAME=FIELD(CMND," ",2)
+        OPEN "DICT",FILENAME TO DICT.FI ELSE
+            OPEN "MD" TO DICT.FI ELSE
+                RETURN.ERROR=1
+                RETURN.ERROR<2>="COULD NOT OPEN DICTIONARY"
+                RETURN
+            END
+        END
+        READ SCHEMA FROM DICT.FI, "SCHEMA" ELSE SCHEMA=""   ;* This can be build with schema.json!!!
+        READ SCHEMA.JSON FROM DICT.FI, "SCHEMA.JSON" ELSE SCHEMA.JSON=""
+*      CALL WOBJ(SOBJ,"FROMSTRING","",SCHEMA.JSON,"",RERR)
+        sobj = SCHEMA.JSON->$fromjson()
+        coljust=""
+*
+* Here we pull all the found output Dictionary Items
+*
+        Columns=""
+        ColumnNumber=0
+        NumberColumns=0
+        LOOP
+            ColumnNumber+=1
+            ResultCode = JQLGETPROPERTY(ColName,Statement,ColumnNumber,COL_PROPERTY_DICT_IID)
+*
+* Read in the dictionary
+*
+            READ DICT FROM DICT.FI, COLNAME ELSE DICT=""
+*
+* Code to handle *A1 *A2 type items
+*
+            IF DICT="" AND ColName[1,1]="*" THEN
+                DICT="A"
+                DICT<2>=ColName[3,9999]
+                DICT<9>="L"
+                DICT<10>="10"
+                ColName=ColName[2,9999]
+            END
+*
+* Populate our output collection
+* This will line up with the Data returned by JQLFETCH
+*
+        UNTIL ColName="" DO
+            DCOLUMNS(ColumnNumber)=DICT
+            COLUMNS<ColumnNumber>=ColName
+            NumberColumns+=1
+        REPEAT
+
+* Execute our actual query
+
+        V.Status = JQLEXECUTE(Statement,SelectList)
+*
+* Fetch data loop
+*
+        ProcessedItems = 0
+        FIRST.PASS=1
+        COLLECTION.CNTR=""
+*
+*DEBUG; *
+*
+        LOOP
+*
+* Fetch a row of data
+*
+            V.Status = JQLFETCH(Statement, Control, V.Data)
+        WHILE V.Status >= 0 DO
+
+*DEBUG; *
+            COLLECTION.CNTR=""
+*
+* Pick up data record
+*
+            RECORDOBJ = NEW OBJECT()
+            FOR X=1 TO NumberColumns
+                COLUMNNAME=COLUMNS<X>
+*
+* We cannot have dots in our column names
+*
+                CONVERT '.' TO '_' IN COLUMNNAME
+                D=V.Data<X>   ;* get our data - Can have multi-values!!
+                DICT=DCOLUMNS(X)        ;* Get our Dictionary item
+                DICT.ATT=DICT<2>        ;* Get our Dictionary item; A/S attribute based
+                COLLECTION.ID=""        ;* Holder for our collections
+                DICT.TYPE=""  ;* Dictionary type
+                IF DICT.ATT OR DICT<1>='I' THEN
+                    IF DICT<1>='I' THEN DICT.ATT=COLUMNNAME ;* I TYPE
+*
+* Determine if a collection or an array
+*
+                    IF DICT<1>='I' THEN
+                        COLLECTION.ID=""
+                    END ELSE
+                        COLLECTION.ID=SCHEMA<DICT.ATT>
+                    END
+                    DICT.TYPE = sobj->@DICT.ATT->type
+                    DICT.COLLECTION.ID = sobj->@DICT.ATT->group
+*               CALL WOBJ(SOBJ,"GET",DICT.ATT:'.type',DICT.TYPE,"",RERR)
+*               CALL WOBJ(SOBJ,"GET",DICT.ATT:'.group',DICT.COLLECTION.ID,"",RERR)
+
+                    IF DICT.COLLECTION.ID # "" THEN COLLECTION.ID=DICT.COLLECTION.ID
+                    IF COLLECTION.ID # "" AND DICT.TYPE # "array" THEN
+                        LOCATE COLLECTION.ID IN COLLECTION.CNTR SETTING SCHEMA.POS ELSE
+                            COLLECTION.CNTR<-1>=COLLECTION.ID
+*
+* NEED TO PUT OUR COLLECTION ARRAY IN
+*
+                            TARRAY = NEW ARRAY()
+                            RECORDOBJ->@COLLECTION.ID->TARRAY
+                        END
+                    END
+                END
+*
+* Try and determine if this is a number
+*
+                BEGIN CASE
+                CASE DICT<7>[1,2]="MD"
+                    T="SET.NUMBER"
+                CASE 1
+                    T="SET.STRING"
+                END CASE
+*
+                IF T="SET.NUMBER" THEN CONVERT "$," TO "" IN D
+                NUM.VALS=DCOUNT(D,@VM)
+                TEMP.OBJECT = NEW OBJECT()
+                IF DICT.TYPE="array" OR DICT.TYPE="collection" THEN
+                    IF COLLECTION.ID = "" OR DICT.TYPE = "array" THEN
+                        TARRAY=NEW ARRAY()
+                        RECORDOBJ->@COLUMNNAME=TARRAY
+                    END ELSE
+                        ISARRAY = RECORDOBJ->$valuetype(COLLECTION.ID)
+                        IF ISARRAY # "array" THEN
+                            RECORDOBJ->@COLLECTION.ID = NEW ARRAY()
+                        END
+                        COLLECTION.LENGTH = RECORDOBJ->@COLLECTION.ID->$size()
+                    END
+                    FOR V=1 TO NUM.VALS
+                        THIS.V=D<1,V>
+                        NUM.SUBS=DCOUNT(THIS.V,@SVM)
+                        IF NUM.SUBS=0 THEN NUM.SUBS=1
+                        V.P=COLUMNNAME:"[":V-1:"]"
+                        TV=V-1
+                        IF NUM.SUBS=1 THEN
+                            IF TRIM(COLLECTION.ID) # "" AND DICT.TYPE # "array" THEN
+                                IF V > COLLECTION.LENGTH THEN
+*
+* WE NEED TO ADD OUR OBJECTS
+*
+                                    FOR SUB.V=COLLECTION.LENGTH+1 TO V
+                                        RECORDOBJ->@COLLECTION.ID->$append(new object() )
+                                    NEXT SUB.V
+                                    COLLECTION.LENGTH=V
+                                END
+                                TNAME=COLLECTION.ID:"[":V-1:"]"
+                                BEGIN CASE
+                                CASE T="SET.NUMBER"
+                                    RECORDOBJ->@COLLECTION.ID->@TV->@COLUMNNAME = (THIS.V+0)
+                                CASE 1
+                                    RECORDOBJ->@COLLECTION.ID->@TV->@COLUMNNAME = (THIS.V:"")
+                                END CASE
+                                DREC=RECORDOBJ->$tojson(1)
+                            END ELSE
+                                IF T="SET.STRING" THEN
+                                    RECORDOBJ->@COLUMNNAME->$append(THIS.V:"")
+                                END ELSE
+                                    RECORDOBJ->@COLUMNNAME->$append(THIS.V+0)
+                                END
+                            END
+                        END ELSE
+                            CALL WOBJ(RECORDOBJ,"SET.ARRAY",V.P,"[]","",RERR)
+                            FOR S=1 TO NUM.SUBS
+                                THIS.S=THIS.V<1,1,S>
+                                S.P=V.P:"[":S-1:"]"
+                                DEBUG   ;*                        CALL WOBJ(RECORDOBJ,"SET",S.P,THIS.S,"",RERR);
+                            NEXT S
+                        END
+                    NEXT V
+                END ELSE
+                    BEGIN CASE
+                    CASE COLUMNNAME = ""
+                    CASE T="SET.NUMBER"
+                        RECORDOBJ->@COLUMNNAME = (D+0)
+                    CASE T="SET.STRING"
+                        RECORDOBJ->@COLUMNNAME = (D:"")
+                    END CASE
+                END
+            NEXT X
+            ROBJECT->$append(RECORDOBJ)
+            ProcessedItems++
+        REPEAT
+        RETURN
+    END
