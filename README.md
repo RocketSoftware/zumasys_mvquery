@@ -83,7 +83,7 @@ to assist with data type conversions.
 1. DICT<7>[1,2]="MD" - Data will be a number versus a string.  All $, in the data will be removed.
 2. Everything else is displayed as a string and the data is left as is
 
-## DEMO.FILE example
+### DEMO.FILE example
 
 ```
 MAKE-DEMO-FILE
@@ -109,11 +109,8 @@ ED DICT DEMO.FILE SCHEMA.JSON
     }
  }
  FI
- MVQUERY.RTNE [LIST DEMO.FILE "0001" LASTNAME OS HARDWARE
-
- Output
-
- ```
+ 
+ 
  jsh JBASEDEV ~ -->MVQUERY.RTNE [LIST DEMO.FILE "0001" LASTNAME OS HARDWARE
 Content-type: application/json
 Cache-Control: no-cache
